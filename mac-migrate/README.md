@@ -189,7 +189,53 @@ Rename any hits on Ubuntu before copying.
      ~/mac-transfer/home/Music/iTunes/Library.xml > ~/mac-transfer/Library-windows.xml
    ```
    Then in iTunes for Windows: File → Library → Import Playlist → `\\10.10.10.2\mac-transfer\Library-windows.xml`.
-   Use **iTunes**, not the Apple Music app — the latter can't import a library.
+   The **Apple Music app** for Windows can import the music *files* (point it at `D:\MacArchive\Music\...`), but not the library XML, so playlists and ratings don't come across. Once Apple Music is installed, iTunes sends you back to it for music, so do any XML import in iTunes *before* installing Apple Music.
+6. **Album artwork** that iTunes downloaded isn't inside the song files. See [Restore album artwork](#restore-album-artwork-itc_artpy) below.
+
+## Restore album artwork (`itc_art.py`)
+
+iTunes kept downloaded cover art in its own `.itc` files (`Music/iTunes/Album Artwork/`) rather than inside the songs. That means Apple Music for Windows, iCloud and other players show blank covers. Apple Music has no "Get Album Artwork" command, and iTunes' version only writes to its own store, so the covers have to be **embedded in the files**.
+
+`itc_art.py` does this on Ubuntu:
+
+1. Extracts the image (JPEG, PNG or raw pixels) from every `.itc`/`.itc2` file.
+2. Matches each image to tracks through the Persistent IDs in `Library.xml`.
+3. Copies each track that is missing artwork into an output folder and embeds the cover there. **Originals are never modified.**
+4. Fills the other tracks of an album with that album's cover (turn this off with `--no-album-fill`).
+5. Writes `art_report.csv` and saves the extracted images so you can spot-check them.
+
+It needs `mac_migrate.py` in the same folder (it reuses its path matching) and `mutagen`:
+
+```bash
+python3 -m pip install mutagen        # Pillow is optional, for rare raw-pixel .itc files
+python3 itc_art.py --dry-run          # report only - check "N matched to tracks"
+python3 itc_art.py                    # writes <home>/../art-fixed/
+```
+
+If the Mac copy lives elsewhere, for example on the Seagate, add `--home "/media/xtremejake/Seagate Portable Drive/Archive/mac-transfer/home"`.
+
+| Option | Use |
+|---|---|
+| `--dry-run` | Show what would happen; write nothing |
+| `--home PATH` | The copied Mac home folder (default `~/mac-transfer/home`) |
+| `--out PATH` | Where updated tracks go (default `art-fixed` next to `home`) |
+| `--xml PATH` | Library XML if it isn't in `Music/iTunes/` |
+| `--no-album-fill` | Only use a track's own artwork |
+| `--force` | Replace artwork that is already embedded |
+
+**Statuses in `art_report.csv`:** `embedded (own artwork)`, `embedded (album artwork)`, `already-had-artwork`, `no-artwork-found` (iTunes never had a cover; try MusicBrainz Picard), `skipped-protected` (DRM `.m4p` files are left alone), `skipped-format` (video, WAV), `file-missing`.
+
+If the dry run shows most `.itc` files **unmatched**, your iTunes version named the files differently. The unmatched list is in `art-fixed/_unmatched_itc.txt`.
+
+**Copy the updated tracks to Windows.** Close Apple Music first. Only the changed files are copied, and they overwrite the old ones in place:
+
+```powershell
+robocopy \\10.10.10.2\mac-transfer\art-fixed D:\MacArchive /E /COPY:DT /R:3 /W:10 /XD _extracted_art /XF art_report.csv _unmatched_itc.txt /LOG+:D:\robocopy-art.log /TEE /NP
+```
+
+Reopen Apple Music. If an album still shows a blank cover, opening its **Get Info** window usually makes it re-read the file. These tracks will now fail the Windows checksum check, which is expected because their contents changed.
+
+**Albums still without art** (`no-artwork-found`): use [MusicBrainz Picard](https://picard.musicbrainz.org) on Windows. In Options → Cover Art, tick *Embed cover images into tags*; in File Naming, untick *Rename files* and *Move files*. Then Cluster → Lookup → Save. Test on a few albums first.
 
 ## Cleanup
 
