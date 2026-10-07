@@ -1,0 +1,59 @@
+# Copy to config.yaml and fill in the blanks. This file is an EXAMPLE --
+# it contains no secrets and no personal data. Commit it freely.
+#
+# Secrets (never commit these -- use environment variables / GitHub Secrets):
+#   GEMINI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
+
+# IANA timezone used to interpret event times, e.g. America/New_York
+timezone: America/New_York
+
+# Target calendar. Prefer passing --calendar-id / CALENDAR_ID at runtime
+# (or a GitHub Actions input / variable) over filling this in.
+calendar_id: ""
+
+# Attendee emails to invite to every event. Prefer --attendees /
+# ATTENDEE_EMAILS at runtime over filling this in.
+attendees: []
+
+llm:
+  provider: gemini            # only provider implemented right now
+  model: gemini-2.5-flash
+  api_key_env: GEMINI_API_KEY # env var holding the key (configurable)
+
+extraction_prompt: |
+  Extract every dated event from this school newsletter.
+  The newsletter may span multiple pages; pages without dated events can be ignored.
+  For each event return:
+  - title: the event name as written
+  - date / end_date: YYYY-MM-DD. Use the school-year context to infer the year
+    when it is not printed (e.g. an October page in a 2026-27 newsletter means 2026).
+  - start_time / end_time: 24-hour HH:MM when a time is listed, otherwise ""
+  - location: the venue when listed, otherwise ""
+  - grades: who it is for, e.g. ["kindergarten"], ["1st"], ["5th"], ["pre-k"],
+    or ["all"] for all-school / general events
+  - notes: one short line of useful detail (pickup times, what to wear, etc.)
+  Be exhaustive. Do not invent events. If an event has a rain date, list both
+  and say so in the notes.
+
+reminder_policy_prompt: |
+  You are helping a parent decide calendar reminders for school events.
+  Their kids are in kindergarten and first grade.
+  For each event in the input list, decide:
+  - include (true/false): false for events aimed at other grades only
+    (e.g. 5th grade, 2nd grade, pre-k), adult committee/board meetings, and
+    anything already in the past. Everything else stays in.
+  - reminders: a list of {"method": "popup"|"email", "minutes": N}.
+  Reminder policy -- use your judgement per event, guided by this:
+  - No-school days and half / early-dismissal days need advance planning
+    (childcare, alternative activities): email 10080 minutes (7 days) before
+    plus popup 1440 minutes (1 day) before.
+  - Spirit / clothing days (what to wear): popup 1440 minutes before.
+  - Timed events a parent may attend (identity days, evening PTO events,
+    principal coffees, conference windows): popup 1440 minutes before.
+  - Purely informational days (appreciation days, book fair start, soup day,
+    harvest day, voting at school): no reminders.
+  - Optional evening/community events the parent flagged as not interested in:
+    include the event but set no reminders.
+  Return your answer as JSON matching the required schema, using each event's
+  position in the input list (starting at 0) as its index. Give a one-line
+  reason per decision.
